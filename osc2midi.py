@@ -272,7 +272,6 @@ class OSCMIDIApp:
                 # Nouveau format OSC détaillé : /channel X, /pressure, /value Z
                 self.osc_client.send_message(f"/channel", message.channel + 1)
                 self.osc_client.send_message(f"/pressure", message.value)
-                self.osc_client.send_message(f"/value", message.value)
 
             elif message.type == 'pitchwheel':
                 # Ancien format OSC : /chXpitch Z
@@ -281,8 +280,9 @@ class OSCMIDIApp:
 
                 # Nouveau format OSC détaillé : /channel X, /pitch, /value Z
                 self.osc_client.send_message(f"/channel", message.channel + 1)
-                self.osc_client.send_message(f"/pitch", message.pitch)
-                self.osc_client.send_message(f"/value", message.pitch)
+                self.osc_client.send_message(f"/pitch", message.pitch)Ò       
+
+
 
 if __name__ == "__main__":
     root = tk.Tk()
