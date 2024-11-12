@@ -280,9 +280,8 @@ class OSCMIDIApp:
 
                 # Nouveau format OSC détaillé : /channel X, /pitch, /value Z
                 self.osc_client.send_message(f"/channel", message.channel + 1)
-                self.osc_client.send_message(f"/pitch", message.pitch)Ò       
-
-
+                self.osc_client.send_message(f"/pitch", message.pitch)
+            
 
 if __name__ == "__main__":
     root = tk.Tk()
