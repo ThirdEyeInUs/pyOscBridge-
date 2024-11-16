@@ -266,6 +266,8 @@ class OSCMIDIApp:
                 osc_address = f"/ch{message.channel + 1}cc{message.control}"
                 self.osc_client.send_message(osc_address, message.value)
                 self.log_message(f"IN: {osc_address} {message.value}")
+                self.osc_client.send_message(f"/ch{message.channel + 1}cc", message.control)
+                self.osc_client.send_message(f"/ch{message.channel + 1}ccvalue", message.value)
 
             elif message.type == 'aftertouch':
                 osc_address = f"/ch{message.channel + 1}pressure"
