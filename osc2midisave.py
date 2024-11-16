@@ -8,8 +8,7 @@ import socket
 import json
 import os
 from PIL import Image, ImageTk
-import re
-import time
+import re  # Importation de re pour l'expression régulière
 
 class OSCMIDIApp:
     CONFIG_FILE = "config.json"
@@ -32,7 +31,6 @@ class OSCMIDIApp:
         self.osc_client = None
         self.midi_in_thread = None
         self.osc_server_thread = None
-        self.active_notes = {}
 
     def load_icon(self):
         try:
@@ -42,6 +40,7 @@ class OSCMIDIApp:
             print(f"Erreur lors du chargement de l'icône : {e}")
 
     def load_config(self):
+        # Charger les paramètres sauvegardés sans l'adresse IP locale
         if os.path.exists(self.CONFIG_FILE):
             with open(self.CONFIG_FILE, 'r') as f:
                 config = json.load(f)
@@ -57,9 +56,11 @@ class OSCMIDIApp:
             self.saved_out_ip = "192.168.0.0"
             self.saved_out_port = ""
 
+        # Récupérer dynamiquement l'IP locale de l'hôte à chaque lancement
         self.saved_ip = self.get_local_ip()
 
     def save_config(self):
+        # Sauvegarder les paramètres, sans l'adresse IP locale
         config = {
             "osc_in_port": self.saved_port,
             "midi_input_port": self.saved_midi_port,
@@ -75,8 +76,8 @@ class OSCMIDIApp:
         self.ip_label.pack()
 
         self.ip_entry = tk.Entry(self.master)
-        self.ip_entry.insert(0, self.saved_ip)
-        self.ip_entry.config(state='readonly')
+        self.ip_entry.insert(0, self.saved_ip)  # L'adresse IP locale est affichée ici
+        self.ip_entry.config(state='readonly')  # L'IP est en lecture seule
         self.ip_entry.pack()
 
         self.port_label = tk.Label(self.master, text="Port pour OSC In:")
@@ -117,21 +118,10 @@ class OSCMIDIApp:
         self.start_button = tk.Button(self.master, text="Démarrer", command=self.start)
         self.start_button.pack()
 
-        # Log area
-        self.log_label = tk.Label(self.master, text="Messages de Log:")
-        self.log_label.pack()
-
-        self.log_text = tk.Text(self.master, height=10, width=50)
-        self.log_text.pack()
-
-        # Scrollbar for the log
-        self.log_scroll = tk.Scrollbar(self.master, command=self.log_text.yview)
-        self.log_text.config(yscrollcommand=self.log_scroll.set)
-        self.log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
     def get_local_ip(self):
+        # Fonction pour obtenir l'IP locale de l'hôte
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
+        s.connect(("8.8.8.8", 80))  # Connexion à un serveur DNS public
         ip = s.getsockname()[0]
         s.close()
         return ip
@@ -140,7 +130,7 @@ class OSCMIDIApp:
         return mido.get_input_names()
 
     def get_midi_output_ports(self):
-        return mido.get_output_names()
+        return mido.get_output_names()  # Liste des périphériques MIDI sortants
 
     def start(self):
         if self.start_button['text'] == "Démarrer":
@@ -212,77 +202,86 @@ class OSCMIDIApp:
         self.server.serve_forever()
 
     def handle_osc_message(self, address, *args):
+        # Utilisation d'une expression régulière pour extraire le numéro de canal
         match = re.match(r"/ch(\d+)", address)
         if match:
-            channel = int(match.group(1)) - 1
+            channel = int(match.group(1)) - 1  # Ajuste le canal pour MIDI (0-15)
 
             if "cc" in address:
                 control = int(address.split("cc")[1])
                 value = int(args[0])
                 midi_message = Message('control_change', channel=channel, control=control, value=value)
                 self.midi_out.send(midi_message)
-                self.log_message(f"OUT: {midi_message}")
 
             elif "n" in address:
                 note = int(address.split("n")[1])
                 velocity = int(args[0])
                 midi_message = Message('note_on' if velocity > 0 else 'note_off', channel=channel, note=note, velocity=velocity)
                 self.midi_out.send(midi_message)
-                self.log_message(f"OUT: {midi_message}")
 
             elif "pressure" in address:
                 value = int(args[0])
-                value = max(0, min(value, 127))
+                value = max(0, min(value, 127))  # Limiter la valeur entre 0 et 127
                 midi_message = Message('aftertouch', channel=channel, value=value)
                 self.midi_out.send(midi_message)
-                self.log_message(f"OUT: {midi_message}")
 
             elif "pitch" in address:
-                pitch = int(args[0])
-                midi_message = Message('pitchwheel', channel=channel, pitch=pitch)
+                value = int(args[0])
+                value = max(-8192, min(value, 8191))  # Limiter la valeur entre -8192 et 8191
+                midi_message = Message('pitchwheel', channel=channel, pitch=value)
                 self.midi_out.send(midi_message)
-                self.log_message(f"OUT: {midi_message}")
 
     def midi_to_osc(self, midi_in):
         while True:
             message = midi_in.receive()
-
-            note_id = int(time.time() * 1000)
-
             if message.type == 'note_on':
+                # Ancien format OSC : /chXnY Z
                 osc_address = f"/ch{message.channel + 1}n{message.note}"
                 self.osc_client.send_message(osc_address, message.velocity)
-                self.log_message(f"IN: {osc_address} {message.velocity}")
 
-                self.osc_client.send_message(f"/ch{message.channel + 1}note", message.note)
-                self.osc_client.send_message(f"/ch{message.channel + 1}nvalue", message.velocity)
+                # Nouveau format OSC détaillé : /channel X, /note Y, /value Z
+                self.osc_client.send_message(f"/channel", message.channel + 1)
+                self.osc_client.send_message(f"/note", message.note)
+                self.osc_client.send_message(f"/value", message.velocity)
 
             elif message.type == 'note_off':
-                self.osc_client.send_message(f"/ch{message.channel + 1}noteoff", message.note)
-                self.osc_client.send_message(f"/ch{message.channel + 1}noffvalue", 0)
-                self.log_message(f"IN: /ch{message.channel + 1}noteoff {message.note}")
+                # Ancien format OSC : /chXnY 0
+                osc_address = f"/ch{message.channel + 1}n{message.note}"
+                self.osc_client.send_message(osc_address, 0)
+
+                # Nouveau format OSC détaillé : /channel X, /note Y, /value 0
+                self.osc_client.send_message(f"/channel", message.channel + 1)
+                self.osc_client.send_message(f"/note", message.note)
+                self.osc_client.send_message(f"/value", 0)
 
             elif message.type == 'control_change':
+                # Ancien format OSC : /chXccY Z
                 osc_address = f"/ch{message.channel + 1}cc{message.control}"
                 self.osc_client.send_message(osc_address, message.value)
-                self.log_message(f"IN: {osc_address} {message.value}")
-                self.osc_client.send_message(f"/ch{message.channel + 1}cc", message.control)
-                self.osc_client.send_message(f"/ch{message.channel + 1}ccvalue", message.value)
+
+                # Nouveau format OSC détaillé : /channel X, /cc Y, /value Z
+                self.osc_client.send_message(f"/channel", message.channel + 1)
+                self.osc_client.send_message(f"/cc", message.control)
+                self.osc_client.send_message(f"/value", message.value)
 
             elif message.type == 'aftertouch':
+                # Ancien format OSC : /chXpressure Z
                 osc_address = f"/ch{message.channel + 1}pressure"
                 self.osc_client.send_message(osc_address, message.value)
-                self.log_message(f"IN: {osc_address} {message.value}")
+
+                # Nouveau format OSC détaillé : /channel X, /pressure, /value Z
+                self.osc_client.send_message(f"/channel", message.channel + 1)
+                self.osc_client.send_message(f"/pressure", message.value)
 
             elif message.type == 'pitchwheel':
+                # Ancien format OSC : /chXpitch Z
                 osc_address = f"/ch{message.channel + 1}pitch"
                 self.osc_client.send_message(osc_address, message.pitch)
-                self.log_message(f"IN: {osc_address} {message.pitch}")
 
-    def log_message(self, message):
-        self.log_text.insert(tk.END, f"{message}\n")
-        self.log_text.yview(tk.END)  # Scroll to the latest message
-        self.log_text.update_idletasks()  # Ensure the GUI updates
+                # Nouveau format OSC détaillé : /channel X, /pitch, /value Z
+                self.osc_client.send_message(f"/channel", message.channel + 1)
+                self.osc_client.send_message(f"/pitch", message.pitch)
+            
 
 if __name__ == "__main__":
     root = tk.Tk()
